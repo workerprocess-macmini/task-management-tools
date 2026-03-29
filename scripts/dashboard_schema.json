@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Team Performance Dashboard Schema",
+  "description": "Schema for team performance dashboard data structures",
+  "type": "object",
+  "definitions": {
+    "TeamMetric": {
+      "type": "object",
+      "description": "A single team performance metric",
+      "properties": {
+        "metric_id": {
+          "type": "string",
+          "description": "Unique metric identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Metric name (e.g., 'team_productivity', 'total_team_hours')"
+        },
+        "value": {
+          "type": "number",
+          "description": "Numeric metric value"
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["hours", "tasks", "%", "people", "score", "rate"],
+          "description": "Unit of measurement"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Metric timestamp (ISO 8601)"
+        },
+        "category": {
+          "type": "string",
+          "description": "Metric category (e.g., 'productivity', 'utilization', 'quality')"
+        },
+        "period": {
+          "type": "string",
+          "enum": ["daily", "weekly", "monthly", "real-time"],
+          "description": "Aggregation period"
+        }
+      },
+      "required": ["metric_id", "name", "value", "unit", "category", "timestamp", "period"]
+    },
+    "EmployeeWorkPattern": {
+      "type": "object",
+      "description": "Employee work pattern and productivity metrics",
+      "properties": {
+        "employee_id": {
+          "type": "string",
+          "description": "Unique employee identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Employee name"
+        },
+        "total_hours_logged": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24,
+          "description": "Total work hours logged"
+        },
+        "total_tasks_completed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total tasks completed"
+        },
+        "avg_task_duration": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Average task duration in hours"
+        },
+        "productivity_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Productivity score (0-100%)"
+        },
+        "utilization_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Utilization rate (% of expected hours)"
+        },
+        "peak_hours": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d{2}:\\d{2}-\\d{2}:\\d{2}$"
+          },
+          "description": "Peak productivity hours (HH:MM-HH:MM format)"
+        },
+        "most_productive_day": {
+          "type": "string",
+          "description": "Most productive day of week"
+        },
+        "category_breakdown": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          },
+          "description": "Hours breakdown by work category"
+        },
+        "current_status": {
+          "type": "string",
+          "enum": ["online", "in_session", "paused", "offline"],
+          "description": "Current work status"
+        },
+        "last_activity": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last activity timestamp"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Record creation timestamp"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Record update timestamp"
+        }
+      },
+      "required": ["employee_id", "name", "created_at", "updated_at"]
+    },
+    "DashboardSnapshot": {
+      "type": "object",
+      "description": "Complete team dashboard snapshot at a point in time",
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "description": "Unique snapshot identifier (UUID)"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Snapshot timestamp"
+        },
+        "team_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TeamMetric"
+          },
+          "description": "Team-level metrics"
+        },
+        "employee_patterns": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/EmployeeWorkPattern"
+          },
+          "description": "Employee patterns by employee_id"
+        },
+        "total_team_hours": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 240,
+          "description": "Total team hours for period"
+        },
+        "total_tasks_completed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total tasks completed by team"
+        },
+        "team_average_productivity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Team average productivity score"
+        },
+        "period": {
+          "type": "string",
+          "enum": ["daily", "weekly", "monthly"],
+          "description": "Aggregation period"
+        },
+        "period_start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Period start date/time"
+        },
+        "period_end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Period end date/time"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "timestamp",
+        "team_metrics",
+        "employee_patterns",
+        "total_team_hours",
+        "total_tasks_completed",
+        "team_average_productivity",
+        "period"
+      ]
+    }
+  },
+  "properties": {
+    "snapshot": {
+      "$ref": "#/definitions/DashboardSnapshot"
+    }
+  }
+}

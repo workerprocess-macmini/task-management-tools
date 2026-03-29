@@ -1,0 +1,421 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Productivity Insights Schema",
+  "description": "Schema for productivity insights, patterns, metrics, and reports",
+  "type": "object",
+  "definitions": {
+    "ProductivityMetric": {
+      "type": "object",
+      "description": "A single productivity metric",
+      "properties": {
+        "metric_id": {
+          "type": "string",
+          "description": "Unique metric identifier (UUID)"
+        },
+        "employee_id": {
+          "type": "string",
+          "description": "Employee identifier",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "metric_name": {
+          "type": "string",
+          "description": "Name of the metric",
+          "enum": [
+            "tasks_per_hour",
+            "tasks_per_day",
+            "avg_task_duration",
+            "focus_score",
+            "balance_score",
+            "consistency_score",
+            "peak_hours",
+            "productive_hours",
+            "break_frequency",
+            "category_distribution",
+            "priority_distribution",
+            "completion_rate",
+            "context_switches",
+            "deep_work_hours"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "description": "Metric value",
+          "minimum": 0
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement (hours, percentage, count, etc.)"
+        },
+        "measurement_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of measurement (YYYY-MM-DD)"
+        },
+        "period_type": {
+          "type": "string",
+          "description": "Measurement period",
+          "enum": ["daily", "weekly", "monthly"]
+        },
+        "is_positive_trend": {
+          "type": "boolean",
+          "description": "Whether an increase in this metric is positive"
+        },
+        "historical_average": {
+          "type": ["number", "null"],
+          "description": "Historical average for comparison"
+        },
+        "variance_from_average": {
+          "type": ["number", "null"],
+          "description": "Percentage variance from historical average"
+        },
+        "calculated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Calculation timestamp"
+        }
+      },
+      "required": [
+        "metric_id",
+        "employee_id",
+        "metric_name",
+        "value",
+        "measurement_date",
+        "calculated_at"
+      ]
+    },
+    "WorkPattern": {
+      "type": "object",
+      "description": "A detected work pattern",
+      "properties": {
+        "pattern_id": {
+          "type": "string",
+          "description": "Unique pattern identifier (UUID)"
+        },
+        "employee_id": {
+          "type": "string",
+          "description": "Employee identifier"
+        },
+        "pattern_type": {
+          "type": "string",
+          "description": "Type of pattern detected",
+          "enum": [
+            "peak_hours",
+            "low_hours",
+            "category_focus",
+            "break_pattern",
+            "context_switching",
+            "focus_blocks",
+            "workload_trend",
+            "consistency_pattern",
+            "weekend_work",
+            "overtime_pattern"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the pattern"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Confidence score (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "data": {
+          "type": "object",
+          "description": "Pattern-specific data",
+          "additionalProperties": true
+        },
+        "detected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Detection timestamp"
+        },
+        "analysis_period_start": {
+          "type": "string",
+          "format": "date",
+          "description": "Analysis period start (YYYY-MM-DD)"
+        },
+        "analysis_period_end": {
+          "type": "string",
+          "format": "date",
+          "description": "Analysis period end (YYYY-MM-DD)"
+        }
+      },
+      "required": [
+        "pattern_id",
+        "employee_id",
+        "pattern_type",
+        "description",
+        "confidence",
+        "detected_at"
+      ]
+    },
+    "ProductivityInsight": {
+      "type": "object",
+      "description": "A single productivity insight",
+      "properties": {
+        "insight_id": {
+          "type": "string",
+          "description": "Unique insight identifier (UUID)"
+        },
+        "employee_id": {
+          "type": "string",
+          "description": "Employee identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Insight title",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed insight description"
+        },
+        "insight_type": {
+          "type": "string",
+          "description": "Type of insight",
+          "enum": ["strength", "weakness", "opportunity", "pattern", "trend"]
+        },
+        "severity": {
+          "type": "string",
+          "description": "Severity level",
+          "enum": ["info", "low", "medium", "high", "critical"]
+        },
+        "supported_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of supporting metrics/patterns"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Confidence score (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recommended_action": {
+          "type": "string",
+          "description": "Recommended action to take"
+        },
+        "action_category": {
+          "type": "string",
+          "description": "Category of action",
+          "enum": [
+            "time_management",
+            "focus",
+            "breaks",
+            "workload",
+            "schedule",
+            "optimization",
+            "improvement",
+            "health"
+          ]
+        },
+        "potential_impact": {
+          "type": "string",
+          "description": "Potential impact of action",
+          "enum": ["Low", "Medium", "High"]
+        },
+        "impact_area": {
+          "type": "string",
+          "description": "Area affected by the insight",
+          "enum": ["Productivity", "Health", "Quality", "Efficiency"]
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Generation timestamp"
+        },
+        "analysis_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Analysis date (YYYY-MM-DD)"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorization"
+        }
+      },
+      "required": [
+        "insight_id",
+        "employee_id",
+        "title",
+        "description",
+        "insight_type",
+        "confidence",
+        "generated_at"
+      ]
+    },
+    "ProductivityReport": {
+      "type": "object",
+      "description": "Complete productivity analysis report",
+      "properties": {
+        "report_id": {
+          "type": "string",
+          "description": "Unique report identifier (UUID)"
+        },
+        "employee_id": {
+          "type": "string",
+          "description": "Employee identifier"
+        },
+        "employee_name": {
+          "type": "string",
+          "description": "Employee name"
+        },
+        "period_start": {
+          "type": "string",
+          "format": "date",
+          "description": "Report period start (YYYY-MM-DD)"
+        },
+        "period_end": {
+          "type": "string",
+          "format": "date",
+          "description": "Report period end (YYYY-MM-DD)"
+        },
+        "period_type": {
+          "type": "string",
+          "description": "Type of period",
+          "enum": ["daily", "weekly", "monthly"]
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ProductivityMetric"
+          },
+          "description": "List of productivity metrics"
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/WorkPattern"
+          },
+          "description": "List of detected patterns"
+        },
+        "insights": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ProductivityInsight"
+          },
+          "description": "List of insights"
+        },
+        "overall_score": {
+          "type": "number",
+          "description": "Overall productivity score (0-100)",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "trend": {
+          "type": "string",
+          "description": "Trend direction",
+          "enum": ["improving", "stable", "declining"]
+        },
+        "score_change": {
+          "type": "number",
+          "description": "Percentage change from previous period"
+        },
+        "top_strengths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Top strength areas"
+        },
+        "top_opportunities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Top improvement opportunities"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of recommendations"
+        },
+        "priority_actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "description": "Action description"
+              },
+              "category": {
+                "type": "string",
+                "description": "Action category"
+              },
+              "priority": {
+                "type": "integer",
+                "description": "Priority level (1=highest)"
+              },
+              "impact": {
+                "type": "string",
+                "description": "Expected impact"
+              },
+              "supported_by": {
+                "type": "string",
+                "description": "Supporting insight ID"
+              }
+            }
+          },
+          "description": "Prioritized action list"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Report generation timestamp"
+        },
+        "analysis_count": {
+          "type": "integer",
+          "description": "Number of data points analyzed"
+        },
+        "data_quality": {
+          "type": "number",
+          "description": "Data quality score (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "status": {
+          "type": "string",
+          "description": "Report status",
+          "enum": ["generated", "reviewed", "archived"]
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes"
+        }
+      },
+      "required": [
+        "report_id",
+        "employee_id",
+        "period_start",
+        "period_end",
+        "overall_score",
+        "generated_at"
+      ]
+    }
+  },
+  "properties": {
+    "metric": {
+      "$ref": "#/definitions/ProductivityMetric"
+    },
+    "pattern": {
+      "$ref": "#/definitions/WorkPattern"
+    },
+    "insight": {
+      "$ref": "#/definitions/ProductivityInsight"
+    },
+    "report": {
+      "$ref": "#/definitions/ProductivityReport"
+    }
+  }
+}

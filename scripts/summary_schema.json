@@ -1,0 +1,232 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Daily Summary Schema",
+  "description": "Schema for automated daily work summaries",
+  "type": "object",
+  "definitions": {
+    "TaskSummaryItem": {
+      "type": "object",
+      "description": "A single task in a daily summary",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Unique task identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Task title"
+        },
+        "duration_hours": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24,
+          "description": "Task duration in hours"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "development",
+            "testing",
+            "devops",
+            "documentation",
+            "meetings",
+            "other"
+          ],
+          "description": "Work category"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Task priority level"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "in_progress", "pending"],
+          "description": "Task completion status"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed task description"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Task tags"
+        },
+        "completion_time": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Task completion timestamp"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes"
+        }
+      },
+      "required": ["task_id", "title", "duration_hours", "category"]
+    },
+    "CategorySummary": {
+      "type": "object",
+      "description": "Category-level work summary",
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Work category"
+        },
+        "total_hours": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total hours in category"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of tasks in category"
+        },
+        "percentage_of_day": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of total work time"
+        }
+      },
+      "required": ["category", "total_hours", "task_count", "percentage_of_day"]
+    },
+    "DailySummary": {
+      "type": "object",
+      "description": "Complete daily work summary for an employee",
+      "properties": {
+        "summary_id": {
+          "type": "string",
+          "description": "Unique summary identifier (UUID)"
+        },
+        "employee_id": {
+          "type": "string",
+          "description": "Employee identifier"
+        },
+        "employee_name": {
+          "type": "string",
+          "description": "Employee name"
+        },
+        "summary_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Summary date (YYYY-MM-DD)"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Generation timestamp"
+        },
+        "total_work_hours": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24,
+          "description": "Total work hours for the day"
+        },
+        "total_tasks_completed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Number of completed tasks"
+        },
+        "total_tasks_in_progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Number of in-progress tasks"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TaskSummaryItem"
+          },
+          "description": "List of tasks for the day"
+        },
+        "category_summaries": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/CategorySummary"
+          },
+          "description": "Category-level summaries"
+        },
+        "productivity_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Productivity score (0-100%)"
+        },
+        "most_productive_hour": {
+          "type": "string",
+          "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$|^$",
+          "description": "Peak productivity hour (HH:00 or empty)"
+        },
+        "longest_task": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TaskSummaryItem"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The longest task of the day"
+        },
+        "top_achievements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of achievements"
+        },
+        "observations": {
+          "type": "string",
+          "description": "Work day observations"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Recommendations for improvement"
+        },
+        "sent_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Summary send timestamp"
+        },
+        "sent_to_email": {
+          "type": ["string", "null"],
+          "format": "email",
+          "description": "Email address summary was sent to"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["generated", "sent", "delivered", "failed"],
+          "description": "Summary status"
+        }
+      },
+      "required": [
+        "summary_id",
+        "employee_id",
+        "employee_name",
+        "summary_date",
+        "generated_at",
+        "total_work_hours",
+        "total_tasks_completed",
+        "total_tasks_in_progress",
+        "tasks",
+        "category_summaries",
+        "productivity_score",
+        "status"
+      ]
+    }
+  },
+  "properties": {
+    "summary": {
+      "$ref": "#/definitions/DailySummary"
+    }
+  }
+}

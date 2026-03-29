@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Time Tracking Session Schema",
+  "description": "Schema for work time tracking sessions with pause/resume support",
+  "version": "1.0",
+  "definitions": {
+    "timeSession": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "task_id",
+        "employee_id",
+        "project",
+        "start_time",
+        "created_at",
+        "is_active",
+        "is_paused",
+        "total_duration_seconds"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "description": "Unique session identifier (UUID)"
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Link to work task ID"
+        },
+        "employee_id": {
+          "type": "string",
+          "description": "Employee identifier"
+        },
+        "project": {
+          "type": "string",
+          "description": "Project name"
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Session start time (ISO 8601 with timezone, e.g., '2026-03-28T10:30:00+07:00')"
+        },
+        "end_time": {
+          "type": ["string", "null"],
+          "description": "Session end time (ISO 8601 with timezone, null if still active)"
+        },
+        "created_at": {
+          "type": "string",
+          "description": "When session was created (ISO 8601 UTC)"
+        },
+        "total_duration_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total duration in seconds (excluding pauses)"
+        },
+        "pauses": {
+          "type": "array",
+          "description": "List of pause periods",
+          "items": {
+            "type": "object",
+            "required": ["pause_start", "pause_end", "duration_seconds"],
+            "properties": {
+              "pause_start": {
+                "type": "string",
+                "description": "When pause started (ISO 8601)"
+              },
+              "pause_end": {
+                "type": "string",
+                "description": "When pause ended (ISO 8601)"
+              },
+              "duration_seconds": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Pause duration in seconds"
+              }
+            }
+          }
+        },
+        "is_active": {
+          "type": "boolean",
+          "description": "True if session is still running"
+        },
+        "is_paused": {
+          "type": "boolean",
+          "description": "True if session is currently paused"
+        },
+        "pause_start": {
+          "type": ["string", "null"],
+          "description": "When current pause started (null if not paused)"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["development", "testing", "devops", "management", "communication", "other"],
+          "description": "Task category"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Task priority"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional session notes"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional tags for categorization"
+        }
+      }
+    },
+    "dailySummary": {
+      "type": "object",
+      "description": "Daily duration summary for an employee",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "Date in YYYY-MM-DD format"
+        },
+        "employee_id": {
+          "type": "string"
+        },
+        "total_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_hours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "session_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          },
+          "description": "Hours spent per category"
+        },
+        "by_priority": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          },
+          "description": "Hours spent per priority level"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "sessions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/timeSession"
+      },
+      "description": "Array of time tracking sessions"
+    },
+    "dailySummaries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/dailySummary"
+      },
+      "description": "Daily aggregated summaries"
+    }
+  }
+}
