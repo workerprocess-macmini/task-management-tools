@@ -58,8 +58,8 @@ class ExcelNormalizer:
     ]
 
     MISSING_VALUE = "MISSING"
-    HRIS_SHEET = "HRIS_EMPLOYEES"
-    PAYROLL_SHEET = "PAYROLL_EMPLOYEES"
+    HRIS_SHEET = "HRIS_Employees"  # Case-sensitive: actual sheet name in data
+    PAYROLL_SHEET = "Payroll_Employees"  # Case-sensitive: actual sheet name in data
     OUTPUT_SHEET = "NORMALIZED_MASTER"
 
     def __init__(self, input_file: str) -> None:
@@ -80,9 +80,34 @@ class ExcelNormalizer:
         self.payroll_df: Optional[pd.DataFrame] = None
         self.normalized_df: Optional[pd.DataFrame] = None
 
+    def get_sheet_name(self, workbook_path: Path, target_pattern: str) -> Optional[str]:
+        """
+        Find sheet name in workbook using case-insensitive matching.
+
+        Args:
+            workbook_path: Path to Excel file
+            target_pattern: Pattern to match (e.g., 'hris', 'payroll')
+
+        Returns:
+            Actual sheet name if found, None otherwise
+        """
+        try:
+            from openpyxl import load_workbook as openpyxl_load
+            wb = openpyxl_load(workbook_path)
+            target_lower = target_pattern.lower()
+
+            for sheet_name in wb.sheetnames:
+                if target_lower in sheet_name.lower():
+                    return sheet_name
+
+            return None
+        except Exception:
+            return None
+
     def load_sheets(self) -> bool:
         """
         Load HRIS and Payroll sheets from Excel file.
+        Uses case-insensitive sheet name matching for robustness.
 
         Returns:
             True if both sheets loaded successfully, False otherwise
@@ -90,17 +115,41 @@ class ExcelNormalizer:
         try:
             print(f"📖 Loading sheets from: {self.input_file}")
 
-            # Load HRIS sheet
-            self.hris_df = pd.read_excel(self.input_file, sheet_name=self.HRIS_SHEET)
-            print(f"✓ HRIS_EMPLOYEES loaded: {len(self.hris_df)} rows")
+            # Try exact sheet names first, then case-insensitive matching
+            hris_sheet = self.HRIS_SHEET
+            payroll_sheet = self.PAYROLL_SHEET
+
+            # Try to find sheets (case-insensitive)
+            try:
+                self.hris_df = pd.read_excel(self.input_file, sheet_name=hris_sheet)
+            except ValueError:
+                # Sheet not found with exact name, try case-insensitive
+                found_sheet = self.get_sheet_name(self.input_file, "hris")
+                if found_sheet:
+                    self.hris_df = pd.read_excel(self.input_file, sheet_name=found_sheet)
+                    print(f"ℹ  Found HRIS sheet as: '{found_sheet}'")
+                else:
+                    raise ValueError(f"HRIS sheet not found (tried: {hris_sheet})")
+
+            print(f"✓ HRIS_Employees loaded: {len(self.hris_df)} rows")
 
             # Load Payroll sheet
-            self.payroll_df = pd.read_excel(self.input_file, sheet_name=self.PAYROLL_SHEET)
-            print(f"✓ PAYROLL_EMPLOYEES loaded: {len(self.payroll_df)} rows")
+            try:
+                self.payroll_df = pd.read_excel(self.input_file, sheet_name=payroll_sheet)
+            except ValueError:
+                # Sheet not found with exact name, try case-insensitive
+                found_sheet = self.get_sheet_name(self.input_file, "payroll")
+                if found_sheet:
+                    self.payroll_df = pd.read_excel(self.input_file, sheet_name=found_sheet)
+                    print(f"ℹ  Found Payroll sheet as: '{found_sheet}'")
+                else:
+                    raise ValueError(f"Payroll sheet not found (tried: {payroll_sheet})")
+
+            print(f"✓ Payroll_Employees loaded: {len(self.payroll_df)} rows")
 
             return True
 
-        except FileNotFoundError as e:
+        except ValueError as e:
             print(f"❌ Sheet not found: {e}")
             return False
         except Exception as e:

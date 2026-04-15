@@ -77,10 +77,10 @@ class TestExcelNormalizer(unittest.TestCase):
 
         with pd.ExcelWriter(cls.test_file, engine='openpyxl') as writer:
             pd.DataFrame(cls.hris_data).to_excel(
-                writer, sheet_name="HRIS_EMPLOYEES", index=False
+                writer, sheet_name="HRIS_Employees", index=False
             )
             pd.DataFrame(cls.payroll_data).to_excel(
-                writer, sheet_name="PAYROLL_EMPLOYEES", index=False
+                writer, sheet_name="Payroll_Employees", index=False
             )
 
     @classmethod
