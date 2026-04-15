@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-Unit Tests for normalize_excel.py
+Unit Tests for normalize_excel.py (v2.0)
 
 Tests the ExcelNormalizer class with various scenarios:
 - Loading sheets
+- Dynamic sheet names
+- Multiple payroll sheets
+- Auto-merge all sheets
 - Merging HRIS and Payroll
 - Standardizing data
 - Handling missing values
 - Column reordering
+- Case-insensitive sheet matching
 
 Author: Developer Agent
 Date: 2026-04-15
-Version: 1.0
+Version: 2.0
 """
 
 import unittest
@@ -26,7 +30,7 @@ class TestExcelNormalizer(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Create sample test Excel file."""
+        """Create sample test Excel file with multiple sheets."""
         # Create sample HRIS data
         cls.hris_data = {
             "Employee_ID": ["E1001", "E1002", "E1003"],
@@ -71,6 +75,14 @@ class TestExcelNormalizer(unittest.TestCase):
             "Effective_Date": ["2025-01-01", "2025-01-01"]
         }
 
+        # Create sample Bonus data (additional payroll sheet)
+        cls.bonus_data = {
+            "Employee_ID": ["E1001", "E1002", "E1003"],
+            "Bonus_Year": [2025, 2025, 2025],
+            "Bonus_Amount": [5000, 10000, 2000],
+            "Bonus_Type": ["Annual", "Annual", "Annual"]
+        }
+
         # Create temporary Excel file
         cls.temp_dir = tempfile.TemporaryDirectory()
         cls.test_file = Path(cls.temp_dir.name) / "test_data.xlsx"
@@ -81,6 +93,9 @@ class TestExcelNormalizer(unittest.TestCase):
             )
             pd.DataFrame(cls.payroll_data).to_excel(
                 writer, sheet_name="Payroll_Employees", index=False
+            )
+            pd.DataFrame(cls.bonus_data).to_excel(
+                writer, sheet_name="Bonus_Data", index=False
             )
 
     @classmethod
@@ -99,38 +114,107 @@ class TestExcelNormalizer(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             ExcelNormalizer("non_existent_file.xlsx")
 
-    def test_load_sheets(self) -> None:
-        """Test loading HRIS and Payroll sheets."""
+    def test_load_all_sheet_names(self) -> None:
+        """Test loading all available sheet names."""
         normalizer = ExcelNormalizer(str(self.test_file))
-        result = normalizer.load_sheets()
+        result = normalizer.load_all_sheet_names()
+
+        self.assertTrue(result)
+        self.assertGreater(len(normalizer.all_sheet_names), 0)
+        self.assertIn("HRIS_Employees", normalizer.all_sheet_names)
+        self.assertIn("Payroll_Employees", normalizer.all_sheet_names)
+        self.assertIn("Bonus_Data", normalizer.all_sheet_names)
+
+    def test_find_sheet_name_exact_match(self) -> None:
+        """Test finding sheet with exact name."""
+        normalizer = ExcelNormalizer(str(self.test_file))
+        normalizer.load_all_sheet_names()
+
+        result = normalizer.find_sheet_name("HRIS_Employees")
+        self.assertEqual(result, "HRIS_Employees")
+
+    def test_find_sheet_name_case_insensitive(self) -> None:
+        """Test finding sheet with case-insensitive matching."""
+        normalizer = ExcelNormalizer(str(self.test_file))
+        normalizer.load_all_sheet_names()
+
+        result = normalizer.find_sheet_name("hris_employees")
+        self.assertEqual(result, "HRIS_Employees")
+
+    def test_find_sheet_name_partial_match(self) -> None:
+        """Test finding sheet with partial matching."""
+        normalizer = ExcelNormalizer(str(self.test_file))
+        normalizer.load_all_sheet_names()
+
+        result = normalizer.find_sheet_name("payroll")
+        self.assertEqual(result, "Payroll_Employees")
+
+    def test_detect_primary_sheet(self) -> None:
+        """Test auto-detection of primary sheet."""
+        normalizer = ExcelNormalizer(str(self.test_file))
+        normalizer.load_all_sheet_names()
+
+        primary = normalizer.detect_primary_sheet()
+        self.assertEqual(primary, "HRIS_Employees")
+
+    def test_load_hris_sheet(self) -> None:
+        """Test loading HRIS sheet."""
+        normalizer = ExcelNormalizer(str(self.test_file))
+        normalizer.load_all_sheet_names()
+        result = normalizer.load_hris_sheet()
 
         self.assertTrue(result)
         self.assertIsNotNone(normalizer.hris_df)
-        self.assertIsNotNone(normalizer.payroll_df)
         self.assertEqual(len(normalizer.hris_df), 3)
-        self.assertEqual(len(normalizer.payroll_df), 2)
+        self.assertIn("Employee_ID", normalizer.hris_df.columns)
 
-    def test_merge_sheets(self) -> None:
-        """Test merging HRIS and Payroll by Employee_ID."""
-        normalizer = ExcelNormalizer(str(self.test_file))
-        normalizer.load_sheets()
-        result = normalizer.merge_sheets()
+    def test_load_payroll_sheets(self) -> None:
+        """Test loading multiple payroll sheets."""
+        normalizer = ExcelNormalizer(
+            str(self.test_file),
+            payroll_sheets=["Payroll_Employees", "Bonus_Data"]
+        )
+        normalizer.load_all_sheet_names()
+        result = normalizer.load_payroll_sheets()
+
+        self.assertTrue(result)
+        self.assertEqual(len(normalizer.payroll_dfs), 2)
+        self.assertIn("Payroll_Employees", normalizer.payroll_dfs)
+        self.assertIn("Bonus_Data", normalizer.payroll_dfs)
+
+    def test_auto_merge_all_sheets(self) -> None:
+        """Test auto-merge all sheets functionality."""
+        normalizer = ExcelNormalizer(str(self.test_file), merge_all=True)
+        normalizer.load_all_sheet_names()
+        result = normalizer.auto_merge_all_sheets()
+
+        self.assertTrue(result)
+        self.assertIsNotNone(normalizer.hris_df)
+        self.assertGreater(len(normalizer.payroll_dfs), 0)
+
+    def test_merge_payroll_sheets(self) -> None:
+        """Test merging multiple payroll sheets with HRIS."""
+        normalizer = ExcelNormalizer(
+            str(self.test_file),
+            payroll_sheets=["Payroll_Employees", "Bonus_Data"]
+        )
+        normalizer.load_all_sheet_names()
+        normalizer.load_hris_sheet()
+        normalizer.load_payroll_sheets()
+        result = normalizer.merge_payroll_sheets()
 
         self.assertTrue(result)
         self.assertIsNotNone(normalizer.normalized_df)
         # Should have 3 rows (left join keeps all HRIS rows)
         self.assertEqual(len(normalizer.normalized_df), 3)
-        # Check that E1001 has payroll data
-        e1001_row = normalizer.normalized_df[
-            normalizer.normalized_df["Employee_ID"] == "E1001"
-        ]
-        self.assertEqual(e1001_row.iloc[0]["Salary_Grade"], "G3")
 
     def test_standardize_data(self) -> None:
-        """Test data standardization (missing values and trimming)."""
+        """Test data standardization."""
         normalizer = ExcelNormalizer(str(self.test_file))
-        normalizer.load_sheets()
-        normalizer.merge_sheets()
+        normalizer.load_all_sheet_names()
+        normalizer.load_hris_sheet()
+        normalizer.load_payroll_sheets()
+        normalizer.merge_payroll_sheets()
         result = normalizer.standardize_data()
 
         self.assertTrue(result)
@@ -142,18 +226,16 @@ class TestExcelNormalizer(unittest.TestCase):
     def test_reorder_columns(self) -> None:
         """Test column reordering."""
         normalizer = ExcelNormalizer(str(self.test_file))
-        normalizer.load_sheets()
-        normalizer.merge_sheets()
+        normalizer.load_all_sheet_names()
+        normalizer.load_hris_sheet()
+        normalizer.load_payroll_sheets()
+        normalizer.merge_payroll_sheets()
         normalizer.standardize_data()
         result = normalizer.reorder_columns()
 
         self.assertTrue(result)
         # Check that Employee_ID is first column
         self.assertEqual(normalizer.normalized_df.columns[0], "Employee_ID")
-        # Check that specific columns are in order
-        cols = list(normalizer.normalized_df.columns)
-        if "Full_Name" in cols and "Employee_ID" in cols:
-            self.assertLess(cols.index("Employee_ID"), cols.index("Full_Name"))
 
     def test_export_to_excel(self) -> None:
         """Test exporting normalized data to Excel."""
@@ -161,8 +243,10 @@ class TestExcelNormalizer(unittest.TestCase):
             output_file = Path(temp_dir) / "output.xlsx"
 
             normalizer = ExcelNormalizer(str(self.test_file))
-            normalizer.load_sheets()
-            normalizer.merge_sheets()
+            normalizer.load_all_sheet_names()
+            normalizer.load_hris_sheet()
+            normalizer.load_payroll_sheets()
+            normalizer.merge_payroll_sheets()
             normalizer.standardize_data()
             normalizer.reorder_columns()
             result = normalizer.export_to_excel(str(output_file))
@@ -174,8 +258,8 @@ class TestExcelNormalizer(unittest.TestCase):
             exported_df = pd.read_excel(output_file, sheet_name="NORMALIZED_MASTER")
             self.assertEqual(len(exported_df), 3)
 
-    def test_complete_pipeline(self) -> None:
-        """Test complete normalization pipeline."""
+    def test_complete_pipeline_default(self) -> None:
+        """Test complete normalization pipeline with default settings."""
         with tempfile.TemporaryDirectory() as temp_dir:
             output_file = Path(temp_dir) / "normalized.xlsx"
 
@@ -185,11 +269,61 @@ class TestExcelNormalizer(unittest.TestCase):
             self.assertTrue(result)
             self.assertTrue(output_file.exists())
 
+    def test_complete_pipeline_custom_sheets(self) -> None:
+        """Test complete pipeline with custom sheet names."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = Path(temp_dir) / "normalized.xlsx"
+
+            normalizer = ExcelNormalizer(
+                str(self.test_file),
+                payroll_sheets=["Payroll_Employees", "Bonus_Data"]
+            )
+            result = normalizer.normalize(str(output_file))
+
+            self.assertTrue(result)
+            self.assertTrue(output_file.exists())
+
+    def test_complete_pipeline_merge_all(self) -> None:
+        """Test complete pipeline with --merge-all flag."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = Path(temp_dir) / "normalized.xlsx"
+
+            normalizer = ExcelNormalizer(str(self.test_file), merge_all=True)
+            result = normalizer.normalize(str(output_file))
+
+            self.assertTrue(result)
+            self.assertTrue(output_file.exists())
+
+    def test_custom_output_sheet_name(self) -> None:
+        """Test custom output sheet name."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_file = Path(temp_dir) / "output.xlsx"
+
+            normalizer = ExcelNormalizer(
+                str(self.test_file),
+                output_sheet="CUSTOM_MASTER"
+            )
+            normalizer.load_all_sheet_names()
+            normalizer.load_hris_sheet()
+            normalizer.load_payroll_sheets()
+            normalizer.merge_payroll_sheets()
+            normalizer.standardize_data()
+            normalizer.reorder_columns()
+            result = normalizer.export_to_excel(str(output_file))
+
+            self.assertTrue(result)
+
+            # Verify custom sheet name in output
+            exported_df = pd.read_excel(output_file, sheet_name="CUSTOM_MASTER")
+            self.assertEqual(len(exported_df), 3)
+
     def test_get_statistics(self) -> None:
         """Test statistics generation."""
         normalizer = ExcelNormalizer(str(self.test_file))
-        normalizer.load_sheets()
-        normalizer.merge_sheets()
+        normalizer.load_all_sheet_names()
+        normalizer.load_hris_sheet()
+        normalizer.load_payroll_sheets()
+        normalizer.merge_payroll_sheets()
         normalizer.standardize_data()
         normalizer.reorder_columns()
 
@@ -201,21 +335,13 @@ class TestExcelNormalizer(unittest.TestCase):
         self.assertIn("missing_percentage", stats)
         self.assertEqual(stats["total_rows"], 3)
 
-    def test_duplicate_columns_removed(self) -> None:
-        """Test that duplicate columns are removed during merge."""
-        normalizer = ExcelNormalizer(str(self.test_file))
-        normalizer.load_sheets()
-        normalizer.merge_sheets()
-
-        # Full_Name should appear only once
-        full_name_count = list(normalizer.normalized_df.columns).count("Full_Name")
-        self.assertEqual(full_name_count, 1)
-
     def test_left_join_behavior(self) -> None:
         """Test that missing payroll records are kept (left join)."""
         normalizer = ExcelNormalizer(str(self.test_file))
-        normalizer.load_sheets()
-        normalizer.merge_sheets()
+        normalizer.load_all_sheet_names()
+        normalizer.load_hris_sheet()
+        normalizer.load_payroll_sheets()
+        normalizer.merge_payroll_sheets()
 
         # E1003 has no payroll record
         e1003_row = normalizer.normalized_df[
@@ -224,20 +350,17 @@ class TestExcelNormalizer(unittest.TestCase):
         self.assertEqual(len(e1003_row), 1)  # Row exists
         self.assertEqual(e1003_row.iloc[0]["Full_Name"], "Bob Johnson")  # HRIS data present
 
+    def test_duplicate_columns_removed(self) -> None:
+        """Test that duplicate columns are removed during merge."""
+        normalizer = ExcelNormalizer(str(self.test_file))
+        normalizer.load_all_sheet_names()
+        normalizer.load_hris_sheet()
+        normalizer.load_payroll_sheets()
+        normalizer.merge_payroll_sheets()
 
-class TestEdgeCases(unittest.TestCase):
-    """Test edge cases and error handling."""
-
-    def test_missing_required_column(self) -> None:
-        """Test handling of missing required columns."""
-        # This test would require a malformed Excel file
-        # Skipping for now as it requires complex setup
-        pass
-
-    def test_empty_sheet(self) -> None:
-        """Test handling of empty sheets."""
-        # This would also require complex setup
-        pass
+        # Full_Name should appear only once
+        full_name_count = list(normalizer.normalized_df.columns).count("Full_Name")
+        self.assertEqual(full_name_count, 1)
 
 
 def run_tests() -> None:

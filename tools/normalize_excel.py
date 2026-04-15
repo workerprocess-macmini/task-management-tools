@@ -1,35 +1,41 @@
 #!/usr/bin/env python3
 """
-Excel Normalization Script - HRIS + Payroll Merger
+Excel Normalization Script - HRIS + Payroll Merger (v2.0)
 
-Merges HRIS_EMPLOYEES and PAYROLL_EMPLOYEES sheets from an Excel file
-into a single normalized master sheet. Handles missing data, removes
-duplicate columns, and standardizes data types.
+Merges HRIS and multiple Payroll sheets from an Excel file into a single
+normalized master sheet. Supports dynamic sheet selection, auto-detection,
+and sequential multi-sheet merging.
 
 Features:
-- Left join HRIS (primary) with Payroll (secondary) by Employee_ID
+- Dynamic sheet name specification (--hris-sheet, --payroll-sheets)
+- Multiple payroll sheets support (comma-separated list)
+- Auto-merge all sheets (--merge-all flag)
+- Left join HRIS (primary) with Payroll sheets (secondary)
 - Removes duplicate columns from Payroll
 - Fills missing values with "MISSING"
 - Handles terminated employees (keeps them)
-- Command-line interface with optional output file specification
+- Case-insensitive sheet name matching with fallback
 - Comprehensive error handling and logging
 
 Author: Developer Agent
 Date: 2026-04-15
-Version: 1.0
-Usage: python3 normalize_excel.py <input_file> [output_file]
-Example: python3 normalize_excel.py employees.xlsx normalized_employees.xlsx
+Version: 2.0
+Usage: 
+  python3 normalize_excel.py <input_file> [output_file] [--hris-sheet NAME] [--payroll-sheets SHEET1,SHEET2] [--merge-all] [--output-sheet NAME]
+Examples:
+  python3 normalize_excel.py employees.xlsx normalized.xlsx
+  python3 normalize_excel.py employees.xlsx normalized.xlsx --hris-sheet HRIS_Employees --payroll-sheets Payroll_Employees,Bonus_Data
+  python3 normalize_excel.py employees.xlsx normalized.xlsx --merge-all
 """
 
 import sys
-import os
+import argparse
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Optional, List, Dict, Set
 
 try:
     import pandas as pd
-    from openpyxl import Workbook, load_workbook
-    from openpyxl.utils.dataframe import dataframe_to_rows
+    from openpyxl import load_workbook
 except ImportError as e:
     print(f"❌ ERROR: Required library not installed: {e}")
     print("Install: pip install pandas openpyxl")
@@ -38,7 +44,7 @@ except ImportError as e:
 
 class ExcelNormalizer:
     """
-    Handles normalization of HRIS and Payroll Excel sheets.
+    Handles normalization of HRIS and multiple Payroll Excel sheets.
     """
 
     # Define columns that should be removed from Payroll (duplicates)
@@ -57,17 +63,26 @@ class ExcelNormalizer:
         "Salary_Grade", "Base_Salary", "Pay_Frequency", "Effective_Date"
     ]
 
-    MISSING_VALUE = "MISSING"
-    HRIS_SHEET = "HRIS_Employees"  # Case-sensitive: actual sheet name in data
-    PAYROLL_SHEET = "Payroll_Employees"  # Case-sensitive: actual sheet name in data
-    OUTPUT_SHEET = "NORMALIZED_MASTER"
+    # Default sheet names
+    DEFAULT_HRIS_SHEET = "HRIS_Employees"
+    DEFAULT_PAYROLL_SHEETS = ["Payroll_Employees"]
 
-    def __init__(self, input_file: str) -> None:
+    MISSING_VALUE = "MISSING"
+    DEFAULT_OUTPUT_SHEET = "NORMALIZED_MASTER"
+
+    def __init__(self, input_file: str, hris_sheet: Optional[str] = None,
+                 payroll_sheets: Optional[List[str]] = None,
+                 output_sheet: Optional[str] = None,
+                 merge_all: bool = False) -> None:
         """
-        Initialize the normalizer with input file path.
+        Initialize the normalizer with input file and optional sheet names.
 
         Args:
             input_file: Path to input Excel file
+            hris_sheet: Override HRIS sheet name (default: HRIS_Employees)
+            payroll_sheets: List of payroll sheet names (default: [Payroll_Employees])
+            output_sheet: Override output sheet name (default: NORMALIZED_MASTER)
+            merge_all: Auto-detect and merge all sheets (overrides payroll_sheets)
 
         Raises:
             FileNotFoundError: If input file does not exist
@@ -76,124 +91,213 @@ class ExcelNormalizer:
         if not self.input_file.exists():
             raise FileNotFoundError(f"Input file not found: {input_file}")
 
-        self.hris_df: Optional[pd.DataFrame] = None
-        self.payroll_df: Optional[pd.DataFrame] = None
-        self.normalized_df: Optional[pd.DataFrame] = None
+        self.hris_sheet = hris_sheet or self.DEFAULT_HRIS_SHEET
+        self.payroll_sheets = payroll_sheets or self.DEFAULT_PAYROLL_SHEETS
+        self.output_sheet = output_sheet or self.DEFAULT_OUTPUT_SHEET
+        self.merge_all = merge_all
 
-    def get_sheet_name(self, workbook_path: Path, target_pattern: str) -> Optional[str]:
+        self.hris_df: Optional[pd.DataFrame] = None
+        self.payroll_dfs: Dict[str, pd.DataFrame] = {}
+        self.normalized_df: Optional[pd.DataFrame] = None
+        self.all_sheet_names: List[str] = []
+
+    def load_all_sheet_names(self) -> bool:
+        """
+        Load all sheet names from the Excel file.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            wb = load_workbook(self.input_file)
+            self.all_sheet_names = wb.sheetnames
+            print(f"✓ Available sheets: {', '.join(self.all_sheet_names)}")
+            return True
+        except Exception as e:
+            print(f"❌ Error loading sheet names: {e}")
+            return False
+
+    def find_sheet_name(self, target: str) -> Optional[str]:
         """
         Find sheet name in workbook using case-insensitive matching.
 
         Args:
-            workbook_path: Path to Excel file
-            target_pattern: Pattern to match (e.g., 'hris', 'payroll')
+            target: Sheet name or pattern to find
 
         Returns:
             Actual sheet name if found, None otherwise
         """
-        try:
-            from openpyxl import load_workbook as openpyxl_load
-            wb = openpyxl_load(workbook_path)
-            target_lower = target_pattern.lower()
+        target_lower = target.lower()
 
-            for sheet_name in wb.sheetnames:
-                if target_lower in sheet_name.lower():
-                    return sheet_name
+        # Exact match first (case-insensitive)
+        for sheet_name in self.all_sheet_names:
+            if sheet_name.lower() == target_lower:
+                return sheet_name
 
-            return None
-        except Exception:
-            return None
+        # Partial match (case-insensitive)
+        for sheet_name in self.all_sheet_names:
+            if target_lower in sheet_name.lower():
+                return sheet_name
 
-    def load_sheets(self) -> bool:
+        return None
+
+    def detect_primary_sheet(self) -> Optional[str]:
         """
-        Load HRIS and Payroll sheets from Excel file.
-        Uses case-insensitive sheet name matching for robustness.
+        Auto-detect primary sheet (first sheet containing Employee_ID column).
 
         Returns:
-            True if both sheets loaded successfully, False otherwise
+            Sheet name if found, None otherwise
+        """
+        for sheet_name in self.all_sheet_names:
+            try:
+                df = pd.read_excel(self.input_file, sheet_name=sheet_name, nrows=0)
+                if "Employee_ID" in df.columns:
+                    return sheet_name
+            except Exception:
+                continue
+
+        return None
+
+    def load_hris_sheet(self) -> bool:
+        """
+        Load HRIS sheet with fallback to case-insensitive matching.
+
+        Returns:
+            True if successful, False otherwise
         """
         try:
-            print(f"📖 Loading sheets from: {self.input_file}")
+            sheet_name = self.find_sheet_name(self.hris_sheet)
 
-            # Try exact sheet names first, then case-insensitive matching
-            hris_sheet = self.HRIS_SHEET
-            payroll_sheet = self.PAYROLL_SHEET
+            if not sheet_name:
+                raise ValueError(
+                    f"HRIS sheet '{self.hris_sheet}' not found. "
+                    f"Available sheets: {', '.join(self.all_sheet_names)}"
+                )
 
-            # Try to find sheets (case-insensitive)
-            try:
-                self.hris_df = pd.read_excel(self.input_file, sheet_name=hris_sheet)
-            except ValueError:
-                # Sheet not found with exact name, try case-insensitive
-                found_sheet = self.get_sheet_name(self.input_file, "hris")
-                if found_sheet:
-                    self.hris_df = pd.read_excel(self.input_file, sheet_name=found_sheet)
-                    print(f"ℹ  Found HRIS sheet as: '{found_sheet}'")
-                else:
-                    raise ValueError(f"HRIS sheet not found (tried: {hris_sheet})")
+            self.hris_df = pd.read_excel(self.input_file, sheet_name=sheet_name)
+            print(f"✓ HRIS sheet loaded: '{sheet_name}' ({len(self.hris_df)} rows)")
 
-            print(f"✓ HRIS_Employees loaded: {len(self.hris_df)} rows")
-
-            # Load Payroll sheet
-            try:
-                self.payroll_df = pd.read_excel(self.input_file, sheet_name=payroll_sheet)
-            except ValueError:
-                # Sheet not found with exact name, try case-insensitive
-                found_sheet = self.get_sheet_name(self.input_file, "payroll")
-                if found_sheet:
-                    self.payroll_df = pd.read_excel(self.input_file, sheet_name=found_sheet)
-                    print(f"ℹ  Found Payroll sheet as: '{found_sheet}'")
-                else:
-                    raise ValueError(f"Payroll sheet not found (tried: {payroll_sheet})")
-
-            print(f"✓ Payroll_Employees loaded: {len(self.payroll_df)} rows")
+            if "Employee_ID" not in self.hris_df.columns:
+                raise ValueError(f"HRIS sheet must contain 'Employee_ID' column")
 
             return True
 
-        except ValueError as e:
-            print(f"❌ Sheet not found: {e}")
-            return False
         except Exception as e:
-            print(f"❌ Error loading sheets: {e}")
+            print(f"❌ Error loading HRIS sheet: {e}")
             return False
 
-    def merge_sheets(self) -> bool:
+    def load_payroll_sheets(self) -> bool:
         """
-        Merge HRIS and Payroll sheets by Employee_ID (left join).
+        Load all payroll sheets with fallback to case-insensitive matching.
+
+        Returns:
+            True if all sheets loaded successfully, False otherwise
+        """
+        try:
+            for payroll_sheet in self.payroll_sheets:
+                sheet_name = self.find_sheet_name(payroll_sheet)
+
+                if not sheet_name:
+                    print(f"⚠ Payroll sheet '{payroll_sheet}' not found")
+                    continue
+
+                df = pd.read_excel(self.input_file, sheet_name=sheet_name)
+                self.payroll_dfs[sheet_name] = df
+                print(f"✓ Payroll sheet loaded: '{sheet_name}' ({len(df)} rows)")
+
+            if not self.payroll_dfs:
+                raise ValueError("No payroll sheets loaded")
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error loading payroll sheets: {e}")
+            return False
+
+    def auto_merge_all_sheets(self) -> bool:
+        """
+        Auto-detect primary sheet and load all other sheets as payroll.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            print("\n🔍 Auto-detecting sheets...")
+
+            # Find primary sheet (has Employee_ID)
+            primary = self.detect_primary_sheet()
+
+            if not primary:
+                raise ValueError("No sheet with 'Employee_ID' column found")
+
+            self.hris_sheet = primary
+            print(f"✓ Primary sheet detected: '{primary}'")
+
+            # Load primary sheet
+            self.hris_df = pd.read_excel(self.input_file, sheet_name=primary)
+            print(f"✓ Primary sheet loaded: {len(self.hris_df)} rows")
+
+            # Load all other sheets as payroll
+            for sheet_name in self.all_sheet_names:
+                if sheet_name != primary:
+                    try:
+                        df = pd.read_excel(self.input_file, sheet_name=sheet_name)
+                        self.payroll_dfs[sheet_name] = df
+                        print(f"✓ Secondary sheet loaded: '{sheet_name}' ({len(df)} rows)")
+                    except Exception as e:
+                        print(f"⚠ Skipping sheet '{sheet_name}': {e}")
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error in auto-merge: {e}")
+            return False
+
+    def merge_payroll_sheets(self) -> bool:
+        """
+        Sequentially merge multiple payroll sheets with HRIS.
+        Later sheets override earlier sheets on conflicts.
 
         Returns:
             True if merge successful, False otherwise
         """
         try:
-            if self.hris_df is None or self.payroll_df is None:
-                print("❌ Sheets not loaded. Call load_sheets() first.")
+            if self.hris_df is None:
+                print("❌ HRIS sheet not loaded")
                 return False
 
-            print("\n🔗 Merging HRIS and Payroll sheets...")
+            if not self.payroll_dfs:
+                print("❌ No payroll sheets loaded")
+                return False
 
-            # Remove duplicate columns from Payroll
-            payroll_to_merge = self.payroll_df.drop(
-                columns=[col for col in self.DUPLICATE_COLUMNS
-                         if col in self.payroll_df.columns],
-                errors='ignore'
-            )
+            print(f"\n🔗 Merging {len(self.payroll_dfs)} payroll sheet(s)...")
 
-            # Perform left join (HRIS is primary)
-            self.normalized_df = pd.merge(
-                self.hris_df,
-                payroll_to_merge,
-                on="Employee_ID",
-                how="left"
-            )
+            # Start with HRIS as base
+            self.normalized_df = self.hris_df.copy()
 
-            print(f"✓ Merged successfully: {len(self.normalized_df)} rows")
-            print(f"  HRIS only: {len(self.hris_df)}")
-            print(f"  Both sheets: {len(self.normalized_df[self.normalized_df['Payroll_Emp_Code'].notna()])}")
+            # Sequentially merge each payroll sheet
+            for idx, (sheet_name, payroll_df) in enumerate(self.payroll_dfs.items(), 1):
+                print(f"  [{idx}/{len(self.payroll_dfs)}] Merging: '{sheet_name}'...")
 
+                # Remove duplicate columns from payroll
+                payroll_to_merge = payroll_df.drop(
+                    columns=[col for col in self.DUPLICATE_COLUMNS
+                             if col in payroll_df.columns],
+                    errors='ignore'
+                )
+
+                # Merge by Employee_ID (left join - keep all HRIS rows)
+                self.normalized_df = pd.merge(
+                    self.normalized_df,
+                    payroll_to_merge,
+                    on="Employee_ID",
+                    how="left",
+                    suffixes=('', f'_payroll{idx}')  # Handle column name conflicts
+                )
+
+            print(f"✓ Merge complete: {len(self.normalized_df)} rows")
             return True
 
-        except KeyError as e:
-            print(f"❌ Column not found: {e}")
-            return False
         except Exception as e:
             print(f"❌ Error during merge: {e}")
             return False
@@ -207,7 +311,7 @@ class ExcelNormalizer:
         """
         try:
             if self.normalized_df is None:
-                print("❌ Merged data not available.")
+                print("❌ Merged data not available")
                 return False
 
             print("\n🔧 Standardizing data...")
@@ -222,7 +326,7 @@ class ExcelNormalizer:
                     lambda x: str(x).strip() if isinstance(x, str) else x
                 )
 
-            print("✓ Data standardized (missing values filled, whitespace trimmed)")
+            print("✓ Data standardized")
             return True
 
         except Exception as e:
@@ -238,7 +342,7 @@ class ExcelNormalizer:
         """
         try:
             if self.normalized_df is None:
-                print("❌ Normalized data not available.")
+                print("❌ Normalized data not available")
                 return False
 
             print("\n📋 Reordering columns...")
@@ -255,7 +359,7 @@ class ExcelNormalizer:
             final_columns = existing_columns + extra_columns
             self.normalized_df = self.normalized_df[final_columns]
 
-            print(f"✓ Columns reordered: {len(final_columns)} total columns")
+            print(f"✓ Columns reordered: {len(final_columns)} total")
             return True
 
         except Exception as e:
@@ -274,7 +378,7 @@ class ExcelNormalizer:
         """
         try:
             if self.normalized_df is None:
-                print("❌ Normalized data not available.")
+                print("❌ Normalized data not available")
                 return False
 
             output_path = Path(output_file)
@@ -282,16 +386,15 @@ class ExcelNormalizer:
 
             print(f"\n💾 Exporting to: {output_path}")
 
-            # Write to Excel with openpyxl for better control
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 self.normalized_df.to_excel(
                     writer,
-                    sheet_name=self.OUTPUT_SHEET,
+                    sheet_name=self.output_sheet,
                     index=False
                 )
 
-            print(f"✓ Exported successfully to: {output_path}")
-            print(f"  Sheet name: {self.OUTPUT_SHEET}")
+            print(f"✓ Exported successfully")
+            print(f"  Sheet name: {self.output_sheet}")
             print(f"  Rows: {len(self.normalized_df)}")
             print(f"  Columns: {len(self.normalized_df.columns)}")
 
@@ -312,12 +415,14 @@ class ExcelNormalizer:
             True if entire pipeline successful, False otherwise
         """
         print("=" * 70)
-        print("  EXCEL NORMALIZATION - HRIS + PAYROLL MERGER")
+        print("  EXCEL NORMALIZATION - HRIS + PAYROLL MERGER v2.0")
         print("=" * 70)
 
         return (
-            self.load_sheets() and
-            self.merge_sheets() and
+            self.load_all_sheet_names() and
+            (self.auto_merge_all_sheets() if self.merge_all else
+             (self.load_hris_sheet() and self.load_payroll_sheets())) and
+            self.merge_payroll_sheets() and
             self.standardize_data() and
             self.reorder_columns() and
             self.export_to_excel(output_file)
@@ -345,23 +450,65 @@ class ExcelNormalizer:
         }
 
 
-def print_usage() -> None:
-    """Print usage instructions."""
-    print("\n" + "=" * 70)
-    print("USAGE: python3 normalize_excel.py <input_file> [output_file]")
-    print("=" * 70)
-    print("\nArguments:")
-    print("  input_file   - Path to Excel file with HRIS and Payroll sheets")
-    print("  output_file  - Path to output file (default: normalized_<input_file>)")
-    print("\nExample:")
-    print("  python3 normalize_excel.py employees.xlsx normalized_employees.xlsx")
-    print("\nThe script will:")
-    print("  1. Read HRIS_EMPLOYEES and PAYROLL_EMPLOYEES sheets")
-    print("  2. Merge by Employee_ID (left join)")
-    print("  3. Remove duplicate columns")
-    print("  4. Fill missing values with 'MISSING'")
-    print("  5. Export to NORMALIZED_MASTER sheet in output file")
-    print("=" * 70 + "\n")
+def create_parser() -> argparse.ArgumentParser:
+    """Create and return argument parser."""
+    parser = argparse.ArgumentParser(
+        description="Excel Normalization - HRIS + Payroll Merger v2.0",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Default behavior (backward compatible)
+  python3 normalize_excel.py input.xlsx output.xlsx
+  
+  # Specify sheet names explicitly
+  python3 normalize_excel.py input.xlsx output.xlsx \\
+    --hris-sheet HRIS_Employees \\
+    --payroll-sheets Payroll_Employees,Contractor_Payroll
+  
+  # Auto-merge all sheets
+  python3 normalize_excel.py input.xlsx output.xlsx --merge-all
+  
+  # Custom output sheet name
+  python3 normalize_excel.py input.xlsx output.xlsx \\
+    --output-sheet MASTER_DATA
+        """
+    )
+
+    parser.add_argument(
+        "input_file",
+        help="Path to input Excel file"
+    )
+
+    parser.add_argument(
+        "output_file",
+        help="Path to output Excel file"
+    )
+
+    parser.add_argument(
+        "--hris-sheet",
+        help="Override HRIS sheet name (default: HRIS_Employees)",
+        default=None
+    )
+
+    parser.add_argument(
+        "--payroll-sheets",
+        help="Comma-separated payroll sheet names (default: Payroll_Employees)",
+        default=None
+    )
+
+    parser.add_argument(
+        "--merge-all",
+        action="store_true",
+        help="Auto-detect primary sheet and merge all others"
+    )
+
+    parser.add_argument(
+        "--output-sheet",
+        help="Override output sheet name (default: NORMALIZED_MASTER)",
+        default=None
+    )
+
+    return parser
 
 
 def main() -> int:
@@ -371,32 +518,39 @@ def main() -> int:
     Returns:
         0 if successful, 1 if errors occurred
     """
-    # Parse command-line arguments
-    if len(sys.argv) < 2:
-        print_usage()
-        return 1
-
-    input_file = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 else f"normalized_{Path(input_file).name}"
+    parser = create_parser()
+    args = parser.parse_args()
 
     # Validate input file
-    if not Path(input_file).exists():
-        print(f"❌ Error: Input file not found: {input_file}")
+    if not Path(args.input_file).exists():
+        print(f"❌ Error: Input file not found: {args.input_file}")
         return 1
+
+    # Parse payroll sheets
+    payroll_sheets = None
+    if args.payroll_sheets:
+        payroll_sheets = [s.strip() for s in args.payroll_sheets.split(",")]
 
     # Run normalization
     try:
-        normalizer = ExcelNormalizer(input_file)
-        success = normalizer.normalize(output_file)
+        normalizer = ExcelNormalizer(
+            input_file=args.input_file,
+            hris_sheet=args.hris_sheet,
+            payroll_sheets=payroll_sheets,
+            output_sheet=args.output_sheet,
+            merge_all=args.merge_all
+        )
+
+        success = normalizer.normalize(args.output_file)
 
         if success:
             stats = normalizer.get_statistics()
             print("\n" + "=" * 70)
             print("  NORMALIZATION COMPLETE ✓")
             print("=" * 70)
-            print(f"Total Rows: {stats['total_rows']}")
-            print(f"Total Columns: {stats['total_columns']}")
-            print(f"Missing Values: {stats['missing_cells']} ({stats['missing_percentage']:.2f}%)")
+            print(f"Total Rows:        {stats['total_rows']}")
+            print(f"Total Columns:     {stats['total_columns']}")
+            print(f"Missing Values:    {stats['missing_cells']} ({stats['missing_percentage']:.2f}%)")
             print("=" * 70 + "\n")
             return 0
         else:
